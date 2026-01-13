@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Novated Lease Savings Estimator</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; max-width: 860px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    label { display:block; font-weight:600; margin-top: 12px; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 10px; margin-top: 6px; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .muted { color:#555; font-size: 13px; line-height: 1.4; }
+    .result { font-size: 18px; font-weight: 700; }
+    .good { background:#e9f7ee; border-color:#bfe5cc; }
+    .btn { background:#111; color:#fff; border:none; border-radius: 10px; padding: 10px 14px; cursor:pointer; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .kv { display:flex; justify-content:space-between; gap:12px; padding: 10px 0; border-bottom:1px dashed #ddd;}
+    .kv:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+  <h1>Novated Lease Savings Estimator</h1>
+  <p class="muted">
+    High-level estimate only. Not a novated lease quote. Uses simplified marginal tax rates and a proxy for annual lease cost.
+  </p>
+
+  <div class="card">
+    <h2>Inputs</h2>
+
+    <div class="row">
+      <div>
+        <label>Annual Gross Income (AUD)</label>
+        <input id="income" type="number" min="0" step="1000" value="120000" />
+      </div>
+      <div>
+        <label>Vehicle Price (Drive-away, AUD)</label>
+        <input id="vehiclePrice" type="number" min="0" step="500" value="50000" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Estimated Annual Running Costs (AUD)</label>
+        <input id="runningCosts" type="number" min="0" step="100" value="8000" />
+        <div class="muted">Fuel/charging + insurance + servicing + rego (estimate).</div>
+      </div>
+      <div>
+        <label>Assumed Annual Lease Cost % (proxy)</label>
+        <select id="leaseCostPct">
+          <option value="0.15">15% (conservative low)</option>
+          <option value="0.20" selected>20% (default)</option>
+          <option value="0.25">25% (conservative high)</option>
+        </select>
+        <div class="muted">Proxy only. Typical range varies by term, rate, residual and provider fees.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <button class="btn" id="calcBtn">Calculate</button>
+    </div>
+  </div>
+
+  <div class="card good" id="resultsCard" style="display:none;">
+    <h2>Results</h2>
+    <div class="grid">
+      <div>
+        <div class="kv"><span>Assumed marginal tax rate</span><span id="mtr" class="result"></span></div>
+        <div class="kv"><span>Annual cost proxy</span><span id="annualCostProxy" class="result"></span></div>
+        <div class="kv"><span>Estimated annual tax saving</span><span id="taxSaving" class="result"></span></div>
+      </div>
+      <div>
+        <div class="kv"><span>Effective annual cost (estimated)</span><span id="effectiveCost" class="result"></span></div>
+        <div class="kv"><span>After-tax purchase annual cost (baseline)</span><span id="baseline" class="result"></span></div>
+        <div class="kv"><span>Estimated advantage</span><span id="advantage" class="result"></span></div>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top:12px;">
+      Disclaimer: This estimate excludes Medicare levy/offsets and does not model FBT, lease terms, interest rates, residual value, or provider fees. For an accurate quote, speak with a licensed novated lease provider.
+    </p>
+  </div>
+
+  <script>
+    function marginalTaxRate(income) {
+      if (income <= 18200) return 0;
+      if (income <= 45000) return 0.19;
+      if (income <= 120000) return 0.325;
+      if (income <= 180000) return 0.37;
+      return 0.45;
+    }
+
+    function fmtMoney(n) {
+      return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(n);
+    }
+
+    function fmtPct(n) {
+      return (n * 100).toFixed(1) + "%";
+    }
+
+    function calculate({ income, vehiclePrice, runningCosts, leaseCostPct }) {
+      const mtr = marginalTaxRate(income);
+      const annualCostProxy = vehiclePrice * leaseCostPct + runningCosts;
+      const estimatedTaxSaving = vehiclePrice * leaseCostPct * mtr; // conservative
+      const effectiveAnnualCost = annualCostProxy - estimatedTaxSaving;
+      const afterTaxPurchaseAnnualCost = annualCostProxy;
+      const estimatedAdvantage = afterTaxPurchaseAnnualCost - effectiveAnnualCost;
+
+      return {
+        marginalTaxRate: mtr,
+        annualCostProxy,
+        estimatedTaxSaving,
+        effectiveAnnualCost,
+        afterTaxPurchaseAnnualCost,
+        estimatedAdvantage,
+      };
+    }
+
+    document.getElementById("calcBtn").addEventListener("click", () => {
+      const income = Number(document.getElementById("income").value || 0);
+      const vehiclePrice = Number(document.getElementById("vehiclePrice").value || 0);
+      const runningCosts = Number(document.getElementById("runningCosts").value || 0);
+      const leaseCostPct = Number(document.getElementById("leaseCostPct").value || 0.2);
+
+      const res = calculate({ income, vehiclePrice, runningCosts, leaseCostPct });
+
+      document.getElementById("mtr").textContent = fmtPct(res.marginalTaxRate);
+      document.getElementById("annualCostProxy").textContent = fmtMoney(res.annualCostProxy);
+      document.getElementById("taxSaving").textContent = fmtMoney(res.estimatedTaxSaving);
+      document.getElementById("effectiveCost").textContent = fmtMoney(res.effectiveAnnualCost);
+      document.getElementById("baseline").textContent = fmtMoney(res.afterTaxPurchaseAnnualCost);
+      document.getElementById("advantage").textContent = fmtMoney(res.estimatedAdvantage);
+
+      document.getElementById("resultsCard").style.display = "block";
+    });
+  </script>
+</body>
+</html>
